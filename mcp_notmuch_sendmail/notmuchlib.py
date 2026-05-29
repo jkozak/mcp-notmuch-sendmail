@@ -13,25 +13,25 @@ NOTMUCH_SYNC_SCRIPT = os.environ.get("NOTMUCH_SYNC_SCRIPT", None)
 def fmt_timestamp(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
 
+def normalize_empty_lines(text):
+    return re.sub(r'(\n\s*){2,}', '\n\n', text)
+
+def extract_reply(text):
+    result = []
+    for line in text.splitlines():
+        for reply_separator in NOTMUCH_REPLY_SEPARATORS:
+            if line.lower().startswith(reply_separator):
+                return "\n".join(result).strip()
+        result.append(line)
+    return text
+
+def decode_qp(text):
+    try:
+        return quopri.decodestring(text.encode('utf-8')).decode('utf-8')
+    except UnicodeDecodeError:
+        return quopri.decodestring(text.encode('utf-8')).decode('latin1')
+
 def message_to_text(message):
-    def normalize_empty_lines(text):
-        return re.sub(r'(\n\s*){2,}', '\n\n', text)
-
-    def extract_reply(text):
-        result = []
-        for line in text.splitlines():
-            for reply_separator in NOTMUCH_REPLY_SEPARATORS:
-                if line.lower().startswith(reply_separator):
-                    return "\n".join(result).strip()
-            result.append(line)
-        return text
-
-    def decode_qp(text):
-        try:
-            return quopri.decodestring(text.encode('utf-8')).decode('utf-8')
-        except UnicodeDecodeError:
-            return quopri.decodestring(text.encode('utf-8')).decode('latin1')
-
     from_addr = message.get_header('From').strip()
     date_str = fmt_timestamp(message.get_date())
 

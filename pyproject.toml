@@ -39,6 +39,9 @@ Disussions = "https://github.com/runekaagaard/mcp-notmuch-sendmail/discussions"
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.uv]
 package = true
 
@@ -46,4 +49,5 @@ package = true
 dev = [
     "build>=1.2.2.post1",
     "hatchling>=1.27.0",
+    "pytest>=8.0",
 ]
