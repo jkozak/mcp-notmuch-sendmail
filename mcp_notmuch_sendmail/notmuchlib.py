@@ -13,10 +13,10 @@ NOTMUCH_SYNC_SCRIPT = os.environ.get("NOTMUCH_SYNC_SCRIPT", None)
 def fmt_timestamp(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
 
-def normalize_empty_lines(text):
+def normalize_empty_lines(text: str) -> str:
     return re.sub(r'(\n\s*){2,}', '\n\n', text)
 
-def extract_reply(text):
+def extract_reply(text: str) -> str:
     result = []
     for line in text.splitlines():
         for reply_separator in NOTMUCH_REPLY_SEPARATORS:
@@ -25,7 +25,7 @@ def extract_reply(text):
         result.append(line)
     return text
 
-def decode_qp(text):
+def decode_qp(text: str) -> str:
     try:
         return quopri.decodestring(text.encode('utf-8')).decode('utf-8')
     except UnicodeDecodeError:
