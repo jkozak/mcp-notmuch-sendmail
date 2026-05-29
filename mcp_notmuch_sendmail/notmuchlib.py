@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import html2text
 from notmuch import Query, Database
-from mcp_notmuch_sendmail.core import ROOT_DIR, NOTMUCH_DATABASE_PATH, NOTMUCH_REPLY_SEPARATORS
+from mcp_notmuch_sendmail.core import ROOT_DIR, NOTMUCH_DATABASE_PATH, NOTMUCH_REPLY_SEPARATORS, DRAFT_DIR
 
 # Optional script to sync emails
 NOTMUCH_SYNC_SCRIPT = os.environ.get("NOTMUCH_SYNC_SCRIPT", None)
@@ -12,6 +12,85 @@ NOTMUCH_SYNC_SCRIPT = os.environ.get("NOTMUCH_SYNC_SCRIPT", None)
 
 def fmt_timestamp(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+
+def format_attachment_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+def get_attachments_summary(message) -> list:
+    result = []
+    for part in message.walk():
+        content_type = part.get_content_type()
+        filename = part.get_filename()
+        disposition = str(part.get("Content-Disposition", ""))
+        is_attachment = filename is not None or disposition.startswith("attachment")
+        if content_type.startswith("text/") and not is_attachment:
+            continue
+        if not is_attachment:
+            continue
+        payload = part.get_payload(decode=True)
+        size = len(payload) if payload else 0
+        result.append({"filename": filename, "size": size, "content_type": content_type})
+    return result
+
+def get_message_attachments(message) -> list:
+    parts = list(message.get_message_parts())
+    result = []
+    index = 0
+    for part in parts:
+        content_type = part.get_content_type()
+        filename = part.get_filename()
+        disposition = str(part.get("Content-Disposition", ""))
+        is_attachment = filename is not None or disposition.startswith("attachment")
+        if content_type.startswith("text/") and not is_attachment:
+            continue
+        if not is_attachment:
+            continue
+        index += 1
+        if filename is None:
+            filename = f"attachment_{index}"
+        data = part.get_payload(decode=True) or b""
+        result.append((filename, data))
+    return result
+
+def save_attachments(attachments: list, dest_dir: 'Path') -> list:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    result = []
+    for i, (filename, data) in enumerate(attachments, 1):
+        prefixed = f"{i}_{filename}"
+        path = dest_dir / prefixed
+        path.write_bytes(data)
+        result.append({"filename": prefixed, "path": str(path), "size": len(data)})
+    return result
+
+def extract_thread_attachments(thread_id: str) -> str:
+    db = Database(NOTMUCH_DATABASE_PATH)
+    query = Query(db, f'thread:{thread_id}')
+    query.set_sort(Query.SORT.OLDEST_FIRST)
+    messages = query.search_messages()
+
+    all_attachments = []
+    for message in messages:
+        all_attachments.extend(get_message_attachments(message))
+
+    db.close()
+    del query
+    del db
+
+    if not all_attachments:
+        return "No attachments found in this thread."
+
+    dest_dir = DRAFT_DIR / "attachments" / thread_id
+    saved = save_attachments(all_attachments, dest_dir)
+
+    lines = [f"Extracted {len(saved)} attachments to {dest_dir}:"]
+    for att in saved:
+        lines.append(f"- {att['filename']} ({format_attachment_size(att['size'])})")
+    return "\n".join(lines)
 
 def normalize_empty_lines(text: str) -> str:
     return re.sub(r'(\n\s*){2,}', '\n\n', text)
@@ -55,7 +134,23 @@ def message_to_text(message):
             plain = extract_reply(plain)
             result.append(plain)
 
+    msg_wrapper = _make_mime_wrapper(parts)
+    attachments = get_attachments_summary(msg_wrapper)
+    if attachments:
+        result.append("\nATTACHMENTS:")
+        for att in attachments:
+            name = att["filename"] or "unnamed"
+            result.append(f"- {name} ({format_attachment_size(att['size'])})")
+
     return "\n".join(result)
+
+def _make_mime_wrapper(parts):
+    """Wrap a flat list of MIME parts so get_attachments_summary can walk them."""
+    from email.mime.multipart import MIMEMultipart
+    wrapper = MIMEMultipart()
+    for part in parts:
+        wrapper.attach(part)
+    return wrapper
 
 def find_threads(notmuch_search_query: str) -> str:
     db = Database(NOTMUCH_DATABASE_PATH)

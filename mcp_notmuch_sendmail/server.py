@@ -3,7 +3,7 @@ from typing import List, Optional
 from mcp.server.fastmcp import FastMCP
 
 from mcp_notmuch_sendmail.core import SENDMAIL_EMAIL_SIGNATURE_HTML, DRAFT_DIR, log
-from mcp_notmuch_sendmail.notmuchlib import find_threads, view_thread, fetch_new_emails, NOTMUCH_SYNC_SCRIPT
+from mcp_notmuch_sendmail.notmuchlib import find_threads, view_thread, fetch_new_emails, extract_thread_attachments, NOTMUCH_SYNC_SCRIPT
 from mcp_notmuch_sendmail.sendmail import compose, send
 
 mcp = FastMCP("Notmuch Email Client")
@@ -22,14 +22,20 @@ def view_email_thread(thread_id: str) -> str:
 @mcp.tool(description=f"Compose a new email draft from markdown{SIGNATURE_NOTE}")
 @log
 def compose_new_email(subject: str, body_as_markdown: str, to: List[str], cc: Optional[List[str]] = None,
-                      bcc: Optional[List[str]] = None) -> str:
-    return compose(subject, body_as_markdown, to, cc, bcc, thread_id=None)
+                      bcc: Optional[List[str]] = None, attachments: Optional[List[str]] = None) -> str:
+    return compose(subject, body_as_markdown, to, cc, bcc, thread_id=None, attachments=attachments)
 
 @mcp.tool(description=f"Compose a reply to an existing email thread{SIGNATURE_NOTE}")
 @log
 def compose_email_reply(thread_id: str, subject: str, body_as_markdown: str, to: List[str],
-                        cc: Optional[List[str]] = None, bcc: Optional[List[str]] = None) -> str:
-    return compose(subject, body_as_markdown, to, cc, bcc, thread_id)
+                        cc: Optional[List[str]] = None, bcc: Optional[List[str]] = None,
+                        attachments: Optional[List[str]] = None) -> str:
+    return compose(subject, body_as_markdown, to, cc, bcc, thread_id, attachments=attachments)
+
+@mcp.tool(description="Extract all attachments from an email thread to local files")
+@log
+def extract_attachments(thread_id: str) -> str:
+    return extract_thread_attachments(thread_id)
 
 @mcp.tool(description="Sends the composed email draft")
 @log

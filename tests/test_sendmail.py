@@ -74,6 +74,20 @@ class TestCompose:
             assert metadata["to"] == ["to@example.com"]
             assert metadata["cc"] == ["cc@example.com"]
 
+    def test_compose_stores_attachment_paths(self, tmp_path):
+        with patch("mcp_notmuch_sendmail.sendmail.DRAFT_DIR", tmp_path):
+            att_file = tmp_path / "doc.pdf"
+            att_file.write_bytes(b"pdf data")
+            compose("Subj", "body", ["to@example.com"], attachments=[str(att_file)])
+            metadata = json.loads((tmp_path / "draft.json").read_text())
+            assert metadata["attachments"] == [str(att_file)]
+
+    def test_compose_rejects_nonexistent_attachment(self, tmp_path):
+        import pytest
+        with patch("mcp_notmuch_sendmail.sendmail.DRAFT_DIR", tmp_path):
+            with pytest.raises(ValueError, match="not found"):
+                compose("Subj", "body", ["to@example.com"], attachments=["/no/such/file.pdf"])
+
 
 class TestSend:
     def test_send_builds_correct_mime(self, tmp_path):
@@ -118,6 +132,53 @@ class TestSend:
             mime_text = mock_run.call_args[1]["input"]
             assert "In-Reply-To: <msg123@example.com>" in mime_text
             assert "<msg000@example.com> <msg123@example.com>" in mime_text
+
+    def test_send_with_attachments_uses_multipart_mixed(self, tmp_path):
+        with patch("mcp_notmuch_sendmail.sendmail.DRAFT_DIR", tmp_path), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = None
+
+            att_file = tmp_path / "doc.pdf"
+            att_file.write_bytes(b"pdf content here")
+
+            (tmp_path / "draft.md").write_text("Hello")
+            metadata = {
+                "subject": "Test",
+                "to": ["to@example.com"],
+                "cc": [],
+                "bcc": [],
+                "thread_info": None,
+                "attachments": [str(att_file)],
+            }
+            (tmp_path / "draft.json").write_text(json.dumps(metadata))
+
+            result = send()
+            assert result == "Email sent successfully"
+
+            mime_text = mock_run.call_args[1]["input"]
+            assert 'Content-Type: multipart/mixed' in mime_text
+            assert 'Content-Disposition: attachment; filename="doc.pdf"' in mime_text
+            assert "pdf content here" in mime_text or "cGRmIGNvbnRlbnQgaGVyZQ==" in mime_text
+
+    def test_send_without_attachments_no_multipart_mixed(self, tmp_path):
+        with patch("mcp_notmuch_sendmail.sendmail.DRAFT_DIR", tmp_path), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = None
+
+            (tmp_path / "draft.md").write_text("Hello")
+            metadata = {
+                "subject": "Test",
+                "to": ["to@example.com"],
+                "cc": [],
+                "bcc": [],
+                "thread_info": None,
+                "attachments": [],
+            }
+            (tmp_path / "draft.json").write_text(json.dumps(metadata))
+
+            send()
+            mime_text = mock_run.call_args[1]["input"]
+            assert 'Content-Type: multipart/mixed' not in mime_text
 
     def test_send_raises_without_draft(self, tmp_path):
         import pytest

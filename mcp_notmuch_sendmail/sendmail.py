@@ -4,6 +4,8 @@ from typing import Optional, Dict, List
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+from email.mime.base import MIMEBase
+from email import encoders
 
 import markdown_it
 from mdit_py_plugins.deflist import deflist_plugin
@@ -79,8 +81,14 @@ def markdown_to_html(markdown_text: str, css_path: Optional[Path] = None, extra_
     return full_html, images
 
 def compose(subject: str, body_as_markdown: str, to: List[str], cc: Optional[List[str]] = None,
-            bcc: Optional[List[str]] = None, thread_id: Optional[str] = None) -> str:
+            bcc: Optional[List[str]] = None, thread_id: Optional[str] = None,
+            attachments: Optional[List[str]] = None) -> str:
     """Create an HTML email draft from markdown content, optionally as a reply to a thread"""
+    if attachments:
+        for path in attachments:
+            if not Path(path).is_file():
+                raise ValueError(f"Attachment not found: {path}")
+
     thread_info = None
     if thread_id:
         from mcp_notmuch_sendmail.notmuchlib import get_thread_info
@@ -91,7 +99,8 @@ def compose(subject: str, body_as_markdown: str, to: List[str], cc: Optional[Lis
         'to': to,
         'cc': cc or [],
         'bcc': bcc or [],
-        'thread_info': thread_info
+        'thread_info': thread_info,
+        'attachments': attachments or [],
     }
     draft = create_draft(
         markdown_text=body_as_markdown,
@@ -149,6 +158,26 @@ def send():
                 msg_related.attach(image)
 
     msg.attach(msg_related)
+
+    attachment_paths = metadata.get('attachments', [])
+    if attachment_paths:
+        msg_mixed = MIMEMultipart('mixed')
+        # Move headers from msg to msg_mixed
+        for key in ['From', 'To', 'Cc', 'Bcc', 'Subject', 'References', 'In-Reply-To']:
+            if msg[key]:
+                msg_mixed[key] = msg[key]
+                del msg[key]
+        msg_mixed.attach(msg)
+        for att_path in attachment_paths:
+            att_path = Path(att_path)
+            mime_type = mimetypes.guess_type(str(att_path))[0] or 'application/octet-stream'
+            maintype, subtype = mime_type.split('/')
+            part = MIMEBase(maintype, subtype)
+            part.set_payload(att_path.read_bytes())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment', filename=att_path.name)
+            msg_mixed.attach(part)
+        msg = msg_mixed
 
     try:
         with tempfile.NamedTemporaryFile(mode='w+') as tmp:
