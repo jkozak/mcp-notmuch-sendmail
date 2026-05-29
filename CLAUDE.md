@@ -21,7 +21,13 @@ make publish-prod        # build, publish to PyPI, commit version bump, push
 make publish-test        # build, publish to test PyPI, revert version changes
 ```
 
-No test suite exists. No linter configured.
+Testing (requires `libnotmuch.so` via nix-shell):
+```bash
+nix-shell --run 'uv run pytest'          # run all tests
+nix-shell --run 'uv run pytest -k foo'   # run matching tests
+```
+
+No linter configured.
 
 ## Required Environment Variables
 

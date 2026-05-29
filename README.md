@@ -76,10 +76,14 @@ Add to your `claude_desktop_config.json`:
   - View all messages for an email thread
   - Input: `thread_id` (string)
   - Returns conversation in text format with HTML->text conversion
+  - Attachments are listed per message with filename and size
   ```
   FROM: sender@example.com
   DATE: 2024-01-25
   Message content...
+
+  ATTACHMENTS:
+  - report.pdf (45.2 KB)
   - - -
   FROM: another@example.com
   DATE: 2024-01-24
@@ -94,6 +98,7 @@ Add to your `claude_desktop_config.json`:
     - `to` (list): Recipient email addresses
     - `cc` (list, optional): CC recipients
     - `bcc` (list, optional): BCC recipients
+    - `attachments` (list, optional): Absolute file paths to attach
   - Creates draft files and returns paths:
   ```
   Created drafts:
@@ -110,11 +115,23 @@ Add to your `claude_desktop_config.json`:
     - `to` (list): Recipient email addresses
     - `cc` (list, optional): CC recipients
     - `bcc` (list, optional): BCC recipients
+    - `attachments` (list, optional): Absolute file paths to attach
   - Creates draft files and returns paths:
   ```
   Created drafts:
   - /path/to/draft/dir/draft.md (edit this)
   - /path/to/draft/dir/draft.html (preview)
+  ```
+
+- **extract_attachments**
+  - Extract all attachments from an email thread to local files
+  - Input: `thread_id` (string)
+  - Saves attachments to `DRAFT_DIR/attachments/<thread_id>/` with counter prefixes to handle name collisions
+  - Returns list of extracted files:
+  ```
+  Extracted 2 attachments to /path/to/drafts/attachments/thread123/:
+  - 1_report.pdf (45.2 KB)
+  - 2_image.png (120.3 KB)
   ```
 
 - **send_email**
